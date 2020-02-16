@@ -5,8 +5,7 @@ import (
 	"io/ioutil"
 	"fmt"		//Errorf
 	"bytes"
-
-	"numconv"
+	"github.com/pekkizen/numconv"
 )
 
 //GPX --
@@ -44,7 +43,7 @@ var (
 	trkpclose	= []byte("</trkpt>")
 )
 
-//New returns GPX struct with parsed latitude, longitude and elevation data from gpxfile.
+//New returns a GPX struct with parsed latitude, longitude and elevation data from gpxfile.
 func New(gpxfile string, useXMLparser, ignoreErrors bool) (*GPX, error) {
 
 	gpx := &GPX{}
@@ -74,8 +73,6 @@ func (gpx *GPX) TrkpCount() int {
 	}
 	return i
 }
-
-// fmt.Println("parseGPX/trkp estimate: ", trkpCountEstimate(data))
 
 // ParseGPX parses lat, lon and ele values of all track points from GPX file data gpxbytes 
 // and builds from track points a GPX struct with single track with single track segment.
@@ -202,8 +199,7 @@ func parseTrkpt(b []byte, trkp *Trkpt) error {
 	return e1
 }
 
-// parseElevatione returns float64 value of elevation from
-// trackpoint slice b.
+// parseElevatione returns float64 value of elevation from trackpoint slice b.
 func parseElevation(b []byte) (float64, error) {
 
 	i := bytes.IndexByte(b, '<')  //skip attributes
@@ -222,8 +218,7 @@ func parseElevation(b []byte) (float64, error) {
 	return  parseFloat(s[:d])
 }
 
-// parseLatitude returns float64 value of latitude koordinate from
-// trackpoint slice b.
+// parseLatitude returns float64 value of latitude koordinate from trackpoint slice b.
 func parseLatitude(b []byte) (float64, error) {
 
 	i := bytes.Index(b, latkey) + 4
@@ -238,18 +233,8 @@ func parseLatitude(b []byte) (float64, error) {
 	}
 	return  parseFloat(s[:d])
 }
-// package internal/bytealg: indexbyte_generic.go
-func IndexByte(b []byte, c byte) int {
-	for i, x := range b {
-		if x == c {
-			return i
-		}
-	}
-	return -1
-}
 
-// parseLongitude returns float64 value of londitude koordinate from
-// trackpoint slice b.
+// parseLongitude returns float64 value of londitude koordinate from trackpoint slice b.
 func parseLongitude(b []byte) (float64, error) {
 
 	i := bytes.Index(b, lonkey) + 4
