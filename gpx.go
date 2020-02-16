@@ -75,9 +75,9 @@ func (gpx *GPX) TrkpCount() int {
 }
 
 // ParseGPX parses lat, lon and ele values of all track points from GPX file data gpxbytes 
-// and builds from track points a GPX struct with single track with single track segment.
+// and builds from the track points a GPX struct with single track with single track segment.
 // Validity of the xml-format is not checked. Single or double quotation marks are ok, 
-// but not both in same file. Track point error is given if all three numbers are not found.
+// but not both in the same file. A track point error is given if all three numbers are not found.
 // ParseGPX is nearly 20 x faster than encoding/xml.Unmarshal
 //
 func ParseGPX(gpxbytes []byte, gpx *GPX, ignoreErrors bool) error {
@@ -115,7 +115,7 @@ func ParseGPX(gpxbytes []byte, gpx *GPX, ignoreErrors bool) error {
 	return nil
 }
 
-// nextTrkpt returns the first trackpoint slice of slice gpxbytes. Searched track point eg.
+// nextTrkpt returns the first trackpoint slice of the slice gpxbytes. Searched track point eg.
 //		<trkpt lon="-5.760211" lat="37.942557"> <ele>615.25</ele> </trkpt>
 // Returned slice is eg.
 // 		lon="-5.760211" lat="37.942557"> <ele>615.25</ele>
@@ -139,7 +139,7 @@ func nextTrkpt(gpxbytes *[]byte) []byte {
 	return b[l:r]
 }
 
-// getQuotemark returns quotemark (" or ') from first trackpoint.
+// getQuotemark returns the quotemark (" or ') from first trackpoint.
 func getQuotemark(data []byte) (byte, error) {
 
 	s := nextTrkpt(&data)
@@ -199,7 +199,7 @@ func parseTrkpt(b []byte, trkp *Trkpt) error {
 	return e1
 }
 
-// parseElevatione returns float64 value of elevation from trackpoint slice b.
+// parseElevatione returns the float64 value of elevation from the trackpoint slice b.
 func parseElevation(b []byte) (float64, error) {
 
 	i := bytes.IndexByte(b, '<')  //skip attributes
@@ -218,7 +218,7 @@ func parseElevation(b []byte) (float64, error) {
 	return  parseFloat(s[:d])
 }
 
-// parseLatitude returns float64 value of latitude koordinate from trackpoint slice b.
+// parseLatitude returns the float64 value of latitude koordinate from the trackpoint slice b.
 func parseLatitude(b []byte) (float64, error) {
 
 	i := bytes.Index(b, latkey) + 4
@@ -234,7 +234,7 @@ func parseLatitude(b []byte) (float64, error) {
 	return  parseFloat(s[:d])
 }
 
-// parseLongitude returns float64 value of londitude koordinate from trackpoint slice b.
+// parseLongitude returns the float64 value of londitude koordinate from the trackpoint slice b.
 func parseLongitude(b []byte) (float64, error) {
 
 	i := bytes.Index(b, lonkey) + 4
