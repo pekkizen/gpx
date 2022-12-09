@@ -1,11 +1,13 @@
 package gpx
 
 import (
-	"encoding/xml"
-	"io/ioutil"
-	"fmt"		//Errorf
 	"bytes"
-	"github.com/pekkizen/numconv"
+	"encoding/xml"
+	"fmt" //Errorf
+	// "io/ioutil"
+	"os"
+	"numconv"
+	// "github.com/pekkizen/numconv"
 )
 
 //GPX --
@@ -33,7 +35,6 @@ type Trkpt struct {
 }
 var quotemark byte 
 var errf = fmt.Errorf
-var parseFloat = numconv.Atof
 
 var (
 	latkey 		= []byte("lat")
@@ -47,7 +48,7 @@ var (
 func New(gpxfile string, useXMLparser, ignoreErrors bool) (*GPX, error) {
 
 	gpx := &GPX{}
-	gpxbytes, e := ioutil.ReadFile(gpxfile);
+	gpxbytes, e := os.ReadFile(gpxfile)
 	if e != nil || len(gpxbytes) < 100 {
 		return gpx, errf("%s: %v", gpxfile, e)
 	}
@@ -75,7 +76,7 @@ func (gpx *GPX) TrkpCount() int {
 }
 
 // ParseGPX parses lat, lon and ele values of all track points from GPX file data gpxbytes 
-// and builds from the track points a GPX struct with single track with single track segment.
+// and builds from the track points a GPX struct with a single track with a single track segment.
 // Validity of the xml-format is not checked. Single or double quotation marks are ok, 
 // but not both in the same file. A track point error is given if all three numbers are not found.
 // ParseGPX is nearly 20 x faster than encoding/xml.Unmarshal
@@ -99,15 +100,17 @@ func ParseGPX(gpxbytes []byte, gpx *GPX, ignoreErrors bool) error {
 		if trkpSlice == nil {
 			break
 		}
-		if err := parseTrkpt(trkpSlice, &trkp); err != nil {
-			if ignoreErrors {
-				gpx.Errcnt++
-				continue
-			}
+		err := parseTrkpt(trkpSlice, &trkp)
+		
+		switch {
+		case err == nil:
+			trkpnum++
+			*trkseg = append(*trkseg, trkp)
+		case ignoreErrors:
+			gpx.Errcnt++
+		default:
 			return errf("trackpoint %d: %v", trkpnum + 1, err)
 		}
-		trkpnum++
-		*trkseg = append(*trkseg, trkp)
 	}
 	if trkpnum == 0 {
 		return errf("No valid trackpoints found")
@@ -135,7 +138,7 @@ func nextTrkpt(gpxbytes *[]byte) []byte {
 		return nil 
 	}
 	r += d
-	*gpxbytes = b[r+8:] //remove with xml closing tag
+	*gpxbytes = b[r+8:] //remove trkpt with xml closing tag
 	return b[l:r]
 }
 
@@ -207,6 +210,7 @@ func parseElevation(b []byte) (float64, error) {
 		i = 0
 	}
 	d := bytes.Index(b[i:], elekey) + 5
+	
 	if  d < 5 {
 		return 0, errf("missing elevation: %s", b)
 	}
@@ -215,7 +219,7 @@ func parseElevation(b []byte) (float64, error) {
 	if d < 0 {
 		return 0, errf("invalid elevation syntax: %s", b)
 	}
-	return  parseFloat(s[:d])
+	return  numconv.Atof(s[:d])
 }
 
 // parseLatitude returns the float64 value of latitude koordinate from the trackpoint slice b.
@@ -231,7 +235,7 @@ func parseLatitude(b []byte) (float64, error) {
 	if d < 0 {
 		return 0, errf("missing lat quotemark: %s", b)
 	}
-	return  parseFloat(s[:d])
+	return  numconv.Atof(s[:d])
 }
 
 // parseLongitude returns the float64 value of londitude koordinate from the trackpoint slice b.
@@ -247,5 +251,5 @@ func parseLongitude(b []byte) (float64, error) {
 	if d < 0 {
 		return 0, errf("missing lon quotemark: %s", b)
 	}
-	return  parseFloat(s[:d])
+	return  numconv.Atof(s[:d])
 }
