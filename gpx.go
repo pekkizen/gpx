@@ -1,0 +1,227 @@
+package gpx
+
+import (
+	"bytes"
+	"encoding/xml"
+	"fmt" //Errorf
+	"numconv"
+	"os"
+)
+
+type GPX struct {
+	Creator string `xml:"creator,attr"`
+	Version string `xml:"version,attr"`
+	Time    string `xml:"time"`
+	Trks    []Trk  `xml:"trk"`
+	errcnt  int
+}
+type Trk struct {
+	Name    string   `xml:"name"`
+	Trksegs []Trkseg `xml:"trkseg"`
+}
+type Trkseg struct {
+	Trkpts []Trkpt `xml:"trkpt"`
+}
+type Trkpt struct {
+	Lat float64 `xml:"lat,attr"`
+	Lon float64 `xml:"lon,attr"`
+	Ele float64 `xml:"ele"`
+}
+
+const quotemark = '"'
+
+var errf = fmt.Errorf
+var (
+	latkey    = []byte("lat")
+	lonkey    = []byte("lon")
+	elekey    = []byte("<ele>")
+	trkpstart = []byte("<trkpt")
+	trkpclose = []byte("</trkpt>")
+)
+
+// New returns a GPX struct with parsed latitude, longitude and elevation data from gpxfile.
+func New(gpxfile string, useXMLparser, ignoreErrors bool) (*GPX, error) {
+
+	gpx := &GPX{}
+	gpxbytes, e := os.ReadFile(gpxfile)
+	if e != nil {
+		return gpx, errf("%v", e)
+	}
+	if useXMLparser {
+		e = xml.Unmarshal(gpxbytes, &gpx)
+	} else {
+		// this is 15 x faster
+		e = ParseGPX(gpxbytes, gpx, ignoreErrors)
+	}
+	if e != nil {
+		return gpx, errf("%s: %v", gpxfile, e)
+	}
+	return gpx, nil
+}
+
+func (gpx *GPX) TrkpCount() int {
+	i := 0
+	for _, trk := range gpx.Trks {
+		for _, seg := range trk.Trksegs {
+			i += len(seg.Trkpts)
+		}
+	}
+	return i
+}
+
+func (gpx *GPX) ErrCount() int {
+	return gpx.errcnt
+}
+
+func trkpCountEstimate(data []byte) int {
+	if len(data) < 500 {
+		return 1
+	}
+	s := data[len(data)/2:]
+	i := bytes.Index(s, []byte("<trkpt"))
+	if i < 0 {
+		return 1
+	}
+	d := bytes.Index(s[i+1:], []byte("<trkpt")) + 1
+	if d < 20 {
+		return 1
+	}
+	return int(float64(len(data)/d) * 1.05)
+}
+
+// ParseGPX parses lat, lon and ele values of all track points from GPX file data gpxbytes
+// and builds from the track points a GPX struct with a single track with a single track segment.
+// Validity of the xml-format is not checked. Single or double quotation marks are ok,
+// but not both in the same file. A track point error is given if all three numbers are not found.
+// ParseGPX is nearly 20 x faster than encoding/xml.Unmarshal
+func ParseGPX(gpxbytes []byte, gpx *GPX, ignoreErrors bool) error {
+
+	gpx.Trks = append(gpx.Trks, Trk{})
+	gpx.Trks[0].Trksegs = append(gpx.Trks[0].Trksegs, Trkseg{})
+	trkseg := &gpx.Trks[0].Trksegs[0].Trkpts
+	*trkseg = make([]Trkpt, 0, trkpCountEstimate(gpxbytes))
+
+	trkp := Trkpt{}
+	trkpnum := 0
+	for {
+		trkpSlice := nextTrkpt(&gpxbytes)
+		if trkpSlice == nil {
+			break
+		}
+		err := parseTrkpt(trkpSlice, &trkp)
+		switch {
+		case err == nil:
+			trkpnum++
+			*trkseg = append(*trkseg, trkp)
+		case ignoreErrors:
+			gpx.errcnt++
+		default:
+			return errf("trackpoint %d: %v", trkpnum+1, err)
+		}
+	}
+	if trkpnum == 0 {
+		return errf("No valid trackpoints found")
+	}
+	return nil
+}
+
+// nextTrkpt returns the first trackpoint slice of the slice gpxbytes.
+// Searched track point is eg.
+//
+//	<trkpt lon="-5.760211" lat="37.942557"> <ele>615.25</ele> </trkpt>
+//
+// Returned slice is eg.
+// lon="-5.760211" lat="37.942557"> <ele>615.25</ele>
+// Returned slice is removed from gpxbytes.
+func nextTrkpt(gpxbytes *[]byte) []byte {
+
+	b := *gpxbytes
+	d := bytes.Index(b, trkpstart)
+	if d < 0 {
+		return nil
+	}
+	l := d + 7  //skip opening tag
+	r := l + 35 //skip some data
+	d = bytes.Index(b[r:], trkpclose)
+	if d < 0 {
+		return nil
+	}
+	r += d
+	*gpxbytes = b[r+8:] //remove the first trkpt with xml closing tag
+	return b[l:r]
+}
+
+// parseTrkpt parses lat, lon and ele values from track point slice b
+// and sets these to track point struct trkp. Track point slice is eg.
+//
+//	lon="-5.760211" lat="37.942557"> <ele>615.25</ele>
+//
+// White space around numbers is trimmed off and ignored elsewhere.
+// '+' before number is accepted. Error is given for missing data or
+// not properly formatted numbers.
+func parseTrkpt(b []byte, trkp *Trkpt) error {
+	var e1, e2, e3 error
+
+	trkp.Lat, e1 = parseLatitude(b)
+	trkp.Lon, e2 = parseLongitude(b)
+	trkp.Ele, e3 = parseElevation(b)
+	if e1 == nil {
+		e1 = e2
+	}
+	if e1 == nil {
+		e1 = e3
+	}
+	return e1
+}
+
+// parseElevatione returns the float64 value of elevation from the trackpoint slice b.
+func parseElevation(b []byte) (float64, error) {
+
+	i := bytes.IndexByte(b, '<') //skip attributes
+	if i < 0 {
+		i = 0
+	}
+	d := bytes.Index(b[i:], elekey) + 5
+
+	if d < 5 {
+		return 0, errf("missing elevation: %s", b)
+	}
+	s := b[i+d:]
+	d = bytes.IndexByte(s, '<') //just this, not full </ele>
+	if d < 0 {
+		return 0, errf("invalid elevation syntax: %s", b)
+	}
+	return numconv.Atof(s[:d])
+}
+
+// parseLatitude returns the float64 value of latitude koordinate from the trackpoint slice b.
+func parseLatitude(b []byte) (float64, error) {
+
+	i := bytes.Index(b, latkey) + 4
+	if i < 4 {
+		return 0, errf("missing lat: %s", b)
+	}
+	i += bytes.IndexByte(b[i:], quotemark) + 1
+	s := b[i:]
+	d := bytes.IndexByte(s, quotemark)
+	if d < 0 {
+		return 0, errf("missing lat quotemark: %s", b)
+	}
+	return numconv.Atof(s[:d])
+}
+
+// parseLongitude returns the float64 value of londitude koordinate from the trackpoint slice b.
+func parseLongitude(b []byte) (float64, error) {
+
+	i := bytes.Index(b, lonkey) + 4
+	if i < 4 {
+		return 0, errf("missing lon: %s", b)
+	}
+	i += bytes.IndexByte(b[i:], quotemark) + 1
+	s := b[i:]
+	d := bytes.IndexByte(s, quotemark)
+	if d < 0 {
+		return 0, errf("missing lon quotemark: %s", b)
+	}
+	return numconv.Atof(s[:d])
+}
